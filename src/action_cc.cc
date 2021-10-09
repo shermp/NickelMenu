@@ -1,4 +1,7 @@
+#include <Qt>
 #include <QApplication>
+#include <QMap>
+#include <QPluginLoader>
 #include <QProcess>
 #include <QScreen>
 #include <QShowEvent>
@@ -22,6 +25,8 @@
 
 #include "action.h"
 #include "util.h"
+
+#include "plugins/MNGuiInterface.h"
 
 // A note about Nickel dlsyms:
 //
@@ -57,6 +62,8 @@ typedef void WirelessWorkflowManager;
 typedef void StatusBarView;
 typedef void MoreController;
 typedef void MainWindowController;
+
+QMap<QString, QPluginLoader*> plugins;
 
 #define NM_ACT_SYM(var, sym) reinterpret_cast<void*&>(var) = dlsym(RTLD_DEFAULT, sym)
 #define NM_ACT_XSYM(var, symb, err) do { \
@@ -895,4 +902,39 @@ NM_ACTION_(cmd_output) {
     return quiet
         ? nm_action_result_silent()
         : nm_action_result_msg("%s", qPrintable(Qt::convertFromPlainText(out, Qt::WhiteSpacePre)));
+}
+
+NM_ACTION_(nm_gui_plugin) {
+    NM_LOG("Attempting to load plugin: %s", arg);
+    QString plugin_file(arg);
+    if (plugin_file.isEmpty()) {
+        NM_ERR_RET(nullptr, "Plugin name or path not set");
+    }
+    if (!plugins.contains(plugin_file)) {
+        QPluginLoader *loader = new QPluginLoader();
+        loader->setFileName(plugin_file);
+        if (loader->fileName().isEmpty()) {
+            delete loader;
+            NM_ERR_RET(nullptr, "Plugin Loader: could not set plugin filename");
+        }
+        NM_LOG("Plugin Loader: loading plugin");
+        if (!loader->load()) {
+            delete loader;
+            NM_ERR_RET(nullptr, "Plugin Loader: loading plugin failed");
+        }
+        plugins[plugin_file] = loader;
+    }
+    NM_LOG("Plugin Loader: getting plugin instance");
+    QObject *inst = plugins[plugin_file]->instance();
+    if (!inst) {
+        NM_ERR_RET(nullptr, "Plugin Loader: unable to get plugin instance");
+    }
+    MNGuiInterface *gi = qobject_cast<MNGuiInterface*>(inst);
+    if (!gi) {
+        NM_ERR_RET(nullptr, "Plugin does not implement 'NGuiInterface'");
+    }
+    NMDialog *dlg = new NMDialog();
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    gi->showPlugin(dlg);
+    return nm_action_result_silent();
 }
