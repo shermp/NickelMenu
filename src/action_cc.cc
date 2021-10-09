@@ -1,4 +1,3 @@
-#include <Qt>
 #include <QApplication>
 #include <QMap>
 #include <QPluginLoader>
@@ -933,8 +932,6 @@ NM_ACTION_(nm_gui_plugin) {
     if (!gi) {
         NM_ERR_RET(nullptr, "Plugin does not implement 'NGuiInterface'");
     }
-    NMDialog *dlg = new NMDialog();
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    gi->showPlugin(dlg);
+    gi->runPlugin();
     return nm_action_result_silent();
 }
